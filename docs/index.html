@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en-US">
+
+    <head>
+        <meta charset="utf-8">
+        <meta http-equiv="X-UA-Compatible" content="chrome=1">
+        <meta name="HandheldFriendly" content="True">
+        <meta name="MobileOptimized" content="320">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <meta name="description" content="An example subscription page for Simple Subscribe.">
+
+        <title>Simple Subscribe 💌</title>
+    </head>
+
+    <body>
+
+        <style>
+            html {
+                padding: 7%;
+                box-sizing: border-box;
+            }
+
+            label,
+            body {
+                text-align: center;
+                background-color: white;
+                font-family: Arial, x-locale-body, sans-serif;
+            }
+
+
+            div.form-container {
+                margin: 0 auto;
+                display: flex;
+                flex-direction: column;
+                justify-content: center;
+                align-items: center;
+            }
+
+            .form-row input,
+            button {
+                border-radius: .5rem;
+                border: 1px solid black;
+                height: 35px;
+                margin: 0.4rem;
+            }
+
+            button.primary {
+                font: 1rem 'Fira Sans', sans-serif;
+                background-color: aquamarine;
+                box-shadow: 2px 3px black;
+            }
+
+        </style>
+        <h1>Simple Subscribe 💌</h1>
+        <p>Below is a minimal form provided for the Simple Subscribe project! It doesn't work yet. It needs you!</p>
+        <p>If you'd like to set up your own subscription flow, you can find the <a
+                href="https://github.com/victoriadrake/simple-subscribe">Simple Subscribe project on GitHub</a>.</p>
+
+                <hr>
+        <!-- To add a form to your site, copy the below div. Optionally include the above CSS styles. -->
+        <div class="form-container">
+            <p>Enter your email below to subscribe.</p>
+            <div class="form-row" id="subscribe">
+                <!-- Change the below 'action' to your API subscribe endpoint -->
+                <form action="/your/subscribe/path/" method="get">
+                    <label hidden for="email">Enter your email to subscribe</label>
+                    <input type="email" name="email" id="email" placeholder="Enter your email" required>
+                    <button type="submit" class="primary" value="Subscribe">Subscribe</button>
+                </form>
+            </div>
+        </div>
+        <!-- Subscription form ends -->
+
+    </body>
+
+</html>
