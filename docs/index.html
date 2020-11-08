@@ -7,70 +7,204 @@
         <meta name="HandheldFriendly" content="True">
         <meta name="MobileOptimized" content="320">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <meta name="description" content="An example subscription page for Simple Subscribe.">
+        <meta name="description" content="Start building your own independent subscriber base now.">
 
-        <title>Simple Subscribe 💌</title>
+        <meta property="og:title" content="Simple Subscribe" />
+        <meta property="og:type" content="website" />
+        <meta property="og:description" content="Start building your own independent subscriber base." />
+        <meta property="og:url" content="https://simplesubscribe.org" />
+        <meta property="og:site_name" content="SimpleSubscribe.org" />
+        <meta property="og:image" content="img/card.webp" />
+
+        <meta name="twitter:card" content="summary_large_image" />
+        <meta name="twitter:title" content="Start building your own independent subscriber base." />
+        <meta name="twitter:image" content="img/card.webp" />
+        <meta name="twitter:description" content="Start building your own independent subscriber base." />
+
+        <link rel="shortcut icon" href="favicon.ico">
+        <link rel="icon" type="image/png" href="favicon-196x196.png" sizes="196x196" />
+        <link rel="icon" type="image/png" href="favicon-96x96.png" sizes="96x96" />
+        <link rel="icon" type="image/png" href="favicon-32x32.png" sizes="32x32" />
+        <link rel="icon" type="image/png" href="favicon-16x16.png" sizes="16x16" />
+        <link rel="icon" type="image/png" href="favicon-128.png" sizes="128x128" />
+
+        <title>Simple Subscribe</title>
+
+        <script src="https://js.stripe.com/v3/"></script>
+        <link href="style.min.css" rel="stylesheet" type="text/css">
     </head>
 
     <body>
-
-        <style>
-            html {
-                padding: 7%;
-                box-sizing: border-box;
-            }
-
-            label,
-            body {
-                text-align: center;
-                background-color: white;
-                font-family: Arial, x-locale-body, sans-serif;
-            }
-
-
-            div.form-container {
-                margin: 0 auto;
-                display: flex;
-                flex-direction: column;
-                justify-content: center;
-                align-items: center;
-            }
-
-            .form-row input,
-            button {
-                border-radius: .5rem;
-                border: 1px solid black;
-                height: 35px;
-                margin: 0.4rem;
-            }
-
-            button.primary {
-                font: 1rem 'Fira Sans', sans-serif;
-                background-color: aquamarine;
-                box-shadow: 2px 3px black;
-            }
-
-        </style>
-        <h1>Simple Subscribe 💌</h1>
-        <p>Below is a minimal form provided for the Simple Subscribe project! It doesn't work yet. It needs you!</p>
-        <p>If you'd like to set up your own subscription flow, you can find the <a
-                href="https://github.com/victoriadrake/simple-subscribe">Simple Subscribe project on GitHub</a>.</p>
-
-                <hr>
-        <!-- To add a form to your site, copy the below div. Optionally include the above CSS styles. -->
-        <div class="form-container">
-            <p>Enter your email below to subscribe.</p>
-            <div class="form-row" id="subscribe">
-                <!-- Change the below 'action' to your API subscribe endpoint -->
-                <form action="/your/subscribe/path/" method="get">
-                    <label hidden for="email">Enter your email to subscribe</label>
-                    <input type="email" name="email" id="email" placeholder="Enter your email" required>
-                    <button type="submit" class="primary" value="Subscribe">Subscribe</button>
-                </form>
+        <header>
+            <div class="flex row">
+                <div id="logo" class="flex row">
+                    <img src="img/simplesubscribe.png">
+                    Simple Subscribe
+                </div>
+                <div class="flex row" id="menu">
+                    <nav aria-label="page menu" class="flex row">
+                        <ul role="menubar" class="flex row">
+                            <li role="none">
+                                <a href="#features">
+                                    Features
+                                </a>
+                            </li>
+                            <li role="none">
+                                <a href="#pricing">
+                                    Pricing
+                                </a>
+                            </li>
+                            <li role="none">
+                                <a href="https://github.com/victoriadrake/simple-subscribe/">
+                                    GitHub ➚
+                                </a>
+                            </li>
+                        </ul>
+                    </nav>
+                </div>
             </div>
-        </div>
-        <!-- Subscription form ends -->
+        </header>
+        <main aria-role="main">
+            <section class="hero flex col">
+                <h1>
+                    Build an independent subscriber base.
+                </h1>
+                <p>
+                    Start accepting emails and grow your own subscriber list today.
+                </p>
+                <form action="#pricing">
+                    <button type="submit" class="primary">Start Now</button>
+                </form>
+                <img src="img/undraw_Mail_sent_re_0ofv.png" width="180px">
 
+            </section>
+            <section>
+                <hr>
+            </section>
+            <section id="features">
+                <div class="grid">
+                    <div class="feature grid-item">
+                        <h3>
+                            Serverless email subscription.
+                        </h3>
+                        <p>
+                            Use AWS resources to build and manage your own subscriber list.
+                        </p>
+                    </div>
+                    <div class="feature grid-item">
+                        <h3>
+                            You own it.
+                        </h3>
+                        <p>
+                            No platform lock-in here. Set up Simple Subscribe and become self-reliant.
+                        </p>
+                    </div>
+                    <div class="feature grid-item">
+                        <h3>
+                            Fast set up.
+                        </h3>
+                        <p>
+                            Just bring your own infrastructure and save yourself weeks of developer time.
+                        </p>
+                    </div>
+                </div>
+            </section>
+            <section>
+                <hr>
+            </section>
+            <section class="cta flex col">
+                <h2>
+                    We ❤️ open source.
+                </h2>
+                <p>
+                    Simple Subscribe is open source on GitHub, where you can fully review its code.
+                    <br />
+                    Want to help make it better? Become a contributor! We'd love to have you.
+                </p>
+            </section>
+
+            <section id="pricing">
+                <div class="cta flex col">
+                    <h2>
+                        Simple pricing.
+                    </h2>
+                </div>
+                <div class="grid">
+                    <div class="price grid-item flex col">
+                        <h2>
+                            One-time license fee
+                            for commercial use.
+                        </h2>
+                        <span class="value">
+                            $49
+                        </span>
+                        <p>
+                            A flat, one-time fee for monetized or commercial applications.
+                        </p>
+
+                        <button type="submit" class="primary" id="checkout-button">Buy a License</button>
+                        <div id="error-message"></div>
+                    </div>
+                    <div class="price grid-item flex col">
+                        <h2>
+                            Free for free.
+                            <br />
+                            Forever.
+                        </h2>
+                        <span class="value">
+                            $0
+                        </span>
+                        <p>
+                            Open source and free forever for any non-monetized application.
+                        </p>
+                        <form action="https://github.com/victoriadrake/simple-subscribe/">
+                            <button type="submit" class="primary">Get the Code</button>
+                        </form>
+                    </div>
+                </div>
+            </section>
+            <section class="flex col">
+                <img src="img/undraw_Mailbox_re_dvds.png">
+            </section>
+        </main>
+        <footer class="flex col">
+            <p>
+                SimpleSubscribe.org
+            </p>
+            <p>
+                Empowering organizations with solutions that matter.
+                <br />
+                From the makers of <a href="https://applybyapi.com">ApplyByAPI.com</a>.
+            </p>
+        </footer>
+        <script type="text/javascript">
+            var PUBLISHABLE_KEY = 'pk_live_51Hl24UFnoK4LqkUlAOaTGQ6idC6Jgg87Ox8hsuGjlLHfsOhdelO6HJk2WgRcSEvQ6UQ0eEwF7H9Y61HM065KOblR00Xj737trm';
+            var DOMAIN = 'https://simplesubscribe.org/';
+            var stripe = Stripe(PUBLISHABLE_KEY);
+            var handleResult = function (result) {
+                if (result.error) {
+                    var displayError = document.getElementById('error-message');
+                    displayError.textContent = result.error.message;
+                }
+            };
+            document.querySelectorAll('button').forEach(function (button) {
+                button.addEventListener('click', function (e) {
+                    var mode = 'payment';
+                    var priceId = 'price_1HlFOxFnoK4LqkUlRUhkdCqW';
+                    var items = [{ price: priceId, quantity: 1 }];
+                    stripe
+                        .redirectToCheckout({
+                            mode: mode,
+                            lineItems: items,
+                            successUrl:
+                                DOMAIN + 'thank-you',
+                            cancelUrl:
+                                DOMAIN,
+                        })
+                        .then(handleResult);
+                });
+            });
+        </script>
     </body>
 
 </html>
