@@ -27,6 +27,8 @@ If you're interested in managing your own mailing list or newsletter, you can us
 
 Simple Subscribe handles subscription requests, email confirmations (double opt-in), and unsubscription requests for you. You're free to use your own email solution to mail your recipients.
 
+The daughter project [RSS Mailer](https://github.com/victoriadrake/rss-mailer) offers one option for mailing your list by turning RSS feed items into email messages.
+
 ## What this Does
 
 Simple Subscribe will let your visitors:
