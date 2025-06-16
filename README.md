@@ -264,7 +264,7 @@ To run the tests:
 
 ## License
 
-Simple Subscribe is available under the [Mozilla Public License 2.0 (MPL-2.0)](https://www.mozilla.org/en-US/MPL/2.0/) for non-monetized applications, such as building and sending your own free newsletter.
+Simple Subscribe is available under the [Mozilla Public License 2.0 (MPL-2.0)](https://www.mozilla.org/en-US/MPL/2.0/).
 
 ## Contributing
 
