@@ -1,0 +1,76 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: CloudFormation template for Simple Subscribe application
+
+Resources:
+  LambdaDeploymentBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub simple-subscribe-lambda-deployment-${AWS::AccountId} # Unique bucket name
+
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: LambdaDynamoDBAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:PutItem
+                  - dynamodb:GetItem
+                  - dynamodb:UpdateItem
+                  - dynamodb:DeleteItem
+                Resource: !GetAtt SimpleSubscribeTable.Arn
+
+  SimpleSubscribeTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: SimpleSubscribe
+      AttributeDefinitions:
+        - AttributeName: email
+          AttributeType: S
+      KeySchema:
+        - AttributeName: email
+          KeyType: HASH
+      ProvisionedThroughput:
+        ReadCapacityUnits: 5
+        WriteCapacityUnits: 5
+
+  SimpleSubscribeLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: simple-subscribe
+      Handler: simple-subscribe
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Code:
+        S3Bucket: !Ref LambdaDeploymentBucket
+        S3Key: simple-subscribe.zip # Assuming the zip file is named simple-subscribe.zip
+      Runtime: go1.x
+      Timeout: 30
+      MemorySize: 128
+      Environment:
+        Variables:
+          DB_TABLE_NAME: !Ref SimpleSubscribeTable
+
+Outputs:
+  SimpleSubscribeTableName:
+    Description: Name of the DynamoDB table
+    Value: !Ref SimpleSubscribeTable
+  SimpleSubscribeLambdaArn:
+    Description: ARN of the Lambda function
+    Value: !GetAtt SimpleSubscribeLambda.Arn
+  LambdaDeploymentBucketName:
+    Description: Name of the S3 bucket for Lambda deployments
+    Value: !Ref LambdaDeploymentBucket

@@ -1,23 +1,26 @@
 # 💌 Simple Subscribe
 
-Build an independent subscriber base. [SimpleSubscribe.org](https://simplesubscribe.org/).
+Build an independent subscriber base.
 
-- [About the Project](#about-the-project)
-- [What this Does](#what-this-does)
-- [How this Works](#how-this-works)
-  - [Subscribing](#subscribing)
-  - [Verifying](#verifying)
-  - [Providing Unsubscribe Links](#providing-unsubscribe-links)
-- [Requirements and Installation](#requirements-and-installation)
-  - [Environment Variables for Lambda](#environment-variables-for-lambda)
-  - [Create the Sign Up Form](#create-the-sign-up-form)
-- [Security Considerations](#security-considerations)
-  - [Time-Limited Tokens](#time-limited-tokens)
-  - [Periodic Clean Up](#periodic-clean-up)
-- [Dual License](#dual-license)
-- [Contributing](#contributing)
-  - [Open an Issue](#open-an-issue)
-  - [Send a Pull Request](#send-a-pull-request)
+- [💌 Simple Subscribe](#-simple-subscribe)
+  - [About the Project](#about-the-project)
+  - [What this Does](#what-this-does)
+  - [How this Works](#how-this-works)
+    - [Subscribing](#subscribing)
+    - [Verifying](#verifying)
+    - [Providing Unsubscribe Links](#providing-unsubscribe-links)
+  - [Requirements and Installation](#requirements-and-installation)
+    - [Infrastructure as Code (IaC)](#infrastructure-as-code-iac)
+    - [Environment Variables for Lambda](#environment-variables-for-lambda)
+    - [Create the Sign Up Form](#create-the-sign-up-form)
+  - [Security Considerations](#security-considerations)
+    - [Time-Limited Tokens](#time-limited-tokens)
+    - [Periodic Clean Up](#periodic-clean-up)
+  - [Testing](#testing)
+  - [License](#license)
+  - [Contributing](#contributing)
+    - [Open an Issue](#open-an-issue)
+    - [Send a Pull Request](#send-a-pull-request)
 
 ## About the Project
 
@@ -83,7 +86,7 @@ If the provided `email` and `id` match a database item, that item will be delete
 
 ## Requirements and Installation
 
-While Simple Subscribe is in limited beta, you can create the following required resources via the AWS web console. Future releases will feature infrastructure as code.
+Simple Subscribe now includes Infrastructure as Code (IaC) for easier deployment.
 
 The following AWS resources are needed. For set up help, see the provided links.
 
@@ -97,6 +100,50 @@ The `scripts/` directory has some helpers in it. To use these:
 
 1. [Install AWS CLI](https://docs.aws.amazon.com/cli/latest/userguide/cli-chap-install.html) and [set up credentials](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/serverless-getting-started-set-up-credentials.html) on your machine.
 2. Create a `.env` in this repository's root with the appropriate values as described below.
+
+### Infrastructure as Code (IaC)
+
+This project now includes an AWS CloudFormation template (`cloudformation.yaml`) to provision the necessary AWS resources:
+
+- **S3 Bucket**: For storing the Lambda deployment package.
+- **IAM Role**: An execution role for the Lambda function with permissions to access DynamoDB and basic Lambda execution.
+- **DynamoDB Table**: A table named `SimpleSubscribe` with `email` as the primary key.
+- **Lambda Function**: The `simple-subscribe` Lambda function configured with the Go runtime, referencing the S3 bucket for its code and the DynamoDB table name as an environment variable.
+
+To deploy the infrastructure using CloudFormation:
+
+1. **Package your Lambda function**:
+    Build your Go application for Linux and zip it. You can adapt the `scripts/update-lambda.sh` script to upload the zip file to the S3 bucket created by CloudFormation.
+
+    ```bash
+    #!/bin/bash
+
+    set -euxo pipefail
+    source .env
+    GOOS=linux
+    BUILD_NAME=${NAME:-"simple-subscribe"}
+    # Replace YOUR_AWS_ACCOUNT_ID with your actual AWS account ID or retrieve the bucket name from CloudFormation outputs
+    S3_BUCKET_NAME="simple-subscribe-lambda-deployment-YOUR_AWS_ACCOUNT_ID" 
+
+    go build -o "$BUILD_NAME" main.go && zip "$BUILD_NAME".zip "$BUILD_NAME"
+
+    echo "Uploading $BUILD_NAME.zip to s3://$S3_BUCKET_NAME/"
+    aws s3 cp "$BUILD_NAME".zip "s3://$S3_BUCKET_NAME/$BUILD_NAME.zip"
+
+    rm "$BUILD_NAME" "$BUILD_NAME".zip
+    ```
+
+2. **Deploy the CloudFormation stack**:
+    Use the AWS CLI to deploy the `cloudformation.yaml` file.
+
+    ```bash
+    aws cloudformation deploy \
+        --template-file cloudformation.yaml \
+        --stack-name SimpleSubscribeStack \
+        --capabilities CAPABILITY_NAMED_IAM
+    ```
+
+    This command will create or update the CloudFormation stack named `SimpleSubscribeStack` in your AWS account, provisioning all the defined resources.
 
 ### Environment Variables for Lambda
 
@@ -196,11 +243,28 @@ It would be a good idea to periodically clean up your DynamoDB table to avoid re
 
 If you are particularly concerned about data integrity, you may want to explore [On-Demand Backup](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/backuprestore_HowItWorks.html) or [Point-in-Time Recovery](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/PointInTimeRecovery.html) for DynamoDB.
 
-## Dual License
+## Testing
+
+This project includes unit tests to ensure the core logic functions as expected. The tests use Go's built-in testing framework and `testify/mock` for mocking AWS service clients (DynamoDB and SES).
+
+To run the tests:
+
+1. **Ensure Go is installed**: If not, follow the instructions to [install go here](https://go.dev/doc/install).
+2. **Install dependencies**: Navigate to the project root and run:
+
+    ```bash
+    go mod tidy
+    ```
+
+3. **Run tests**:
+
+    ```bash
+    go test -v
+    ```
+
+## License
 
 Simple Subscribe is available under the [Mozilla Public License 2.0 (MPL-2.0)](https://www.mozilla.org/en-US/MPL/2.0/) for non-monetized applications, such as building and sending your own free newsletter.
-
-For commercial organizations or monetized applications, a one-time commercial license fee of $49 helps to support maintenance and further development. Commercial or monetized usage is subject to the [End-User License Agreement](LICENSE-EULA). You may purchase a license at [SimpleSubscribe.org](https://simplesubscribe.org/).
 
 ## Contributing
 

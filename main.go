@@ -14,16 +14,33 @@ import (
 	"github.com/aws/aws-lambda-go/lambda"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
+	"github.com/aws/aws-sdk-go/aws/request"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/ses"
 	"github.com/google/uuid"
 )
 
+// Define interfaces for AWS service clients to enable mocking
+type DynamoDBAPI interface {
+	GetItemWithContext(aws.Context, *dynamodb.GetItemInput, ...request.Option) (*dynamodb.GetItemOutput, error)
+	UpdateItemWithContext(aws.Context, *dynamodb.UpdateItemInput, ...request.Option) (*dynamodb.UpdateItemOutput, error)
+	DeleteItemWithContext(aws.Context, *dynamodb.DeleteItemInput, ...request.Option) (*dynamodb.DeleteItemOutput, error)
+}
+
+type SESAPI interface {
+	SendEmailWithContext(aws.Context, *ses.SendEmailInput, ...request.Option) (*ses.SendEmailOutput, error)
+}
+
+// ServiceClients holds the AWS service clients
+type ServiceClients struct {
+	DynamoDB DynamoDBAPI
+	SES      SESAPI
+}
+
 // Determine if an email exists with the given id.
-func emailExistsWithId(email string, id string) (bool, error) {
+func emailExistsWithId(svc DynamoDBAPI, email string, id string) (bool, error) {
 	table := os.Getenv("DB_TABLE_NAME")
-	svc := dynamodb.New(session.New())
 	input := &dynamodb.GetItemInput{
 		// Get an item that matches email
 		Key: map[string]*dynamodb.AttributeValue{
@@ -34,7 +51,7 @@ func emailExistsWithId(email string, id string) (bool, error) {
 		TableName: aws.String(table),
 	}
 
-	result, err := svc.GetItem(input)
+	result, err := svc.GetItemWithContext(context.Background(), input)
 	if err != nil {
 		if aerr, ok := err.(awserr.Error); ok {
 			switch aerr.Code() {
@@ -67,9 +84,8 @@ func emailExistsWithId(email string, id string) (bool, error) {
 }
 
 // Edits an existing email's attributes. No authorization is performed here, so ensure you check that values of email and id match before calling this function.
-func updateItemInDynamoDB(email string, id string, timestamp string, confirm bool) (*dynamodb.UpdateItemOutput, error) {
+func updateItemInDynamoDB(svc DynamoDBAPI, email string, id string, timestamp string, confirm bool) (*dynamodb.UpdateItemOutput, error) {
 	table := os.Getenv("DB_TABLE_NAME")
-	svc := dynamodb.New(session.New())
 
 	input := &dynamodb.UpdateItemInput{
 		// Provide the key to use for finding the right item.
@@ -103,7 +119,7 @@ func updateItemInDynamoDB(email string, id string, timestamp string, confirm boo
 		TableName:        aws.String(table),
 	}
 
-	result, err := svc.UpdateItem(input)
+	result, err := svc.UpdateItemWithContext(context.Background(), input)
 	if err != nil {
 		if aerr, ok := err.(awserr.Error); ok {
 			switch aerr.Code() {
@@ -134,9 +150,8 @@ func updateItemInDynamoDB(email string, id string, timestamp string, confirm boo
 }
 
 // Delete an email from the table if the id matches.
-func deleteEmailFromDynamoDb(email string, id string) (*dynamodb.DeleteItemOutput, error) {
+func deleteEmailFromDynamoDb(svc DynamoDBAPI, email string, id string) (*dynamodb.DeleteItemOutput, error) {
 	table := os.Getenv("DB_TABLE_NAME")
-	svc := dynamodb.New(session.New())
 	input := &dynamodb.DeleteItemInput{
 		Key: map[string]*dynamodb.AttributeValue{
 			"email": {
@@ -156,7 +171,7 @@ func deleteEmailFromDynamoDb(email string, id string) (*dynamodb.DeleteItemOutpu
 		TableName:           aws.String(table),
 	}
 
-	result, err := svc.DeleteItem(input)
+	result, err := svc.DeleteItemWithContext(context.Background(), input)
 	if err != nil {
 		if aerr, ok := err.(awserr.Error); ok {
 			switch aerr.Code() {
@@ -187,8 +202,7 @@ func deleteEmailFromDynamoDb(email string, id string) (*dynamodb.DeleteItemOutpu
 }
 
 // Send a confirmation email with a link to complete subscription.
-func sendEmailWithSES(email string, id string) (*ses.SendEmailOutput, error) {
-	svc := ses.New(session.New())
+func sendEmailWithSES(sesSvc SESAPI, email string, id string) (*ses.SendEmailOutput, error) {
 	log.Print("EMAIL: ", email)
 
 	// HTML format
@@ -226,7 +240,7 @@ func sendEmailWithSES(email string, id string) (*ses.SendEmailOutput, error) {
 		Source:     aws.String(source),
 	}
 
-	result, err := svc.SendEmail(input)
+	result, err := sesSvc.SendEmailWithContext(context.Background(), input)
 	if err != nil {
 		if aerr, ok := err.(awserr.Error); ok {
 			switch aerr.Code() {
@@ -254,7 +268,8 @@ func sendEmailWithSES(email string, id string) (*ses.SendEmailOutput, error) {
 	return result, nil
 }
 
-func lambdaHandler(ctx context.Context, event events.APIGatewayV2HTTPRequest) (events.APIGatewayV2HTTPResponse, error) {
+func lambdaHandler(ctx context.Context, clients *ServiceClients, event events.APIGatewayV2HTTPRequest) (events.APIGatewayV2HTTPResponse, error) {
+
 	errorPage := fmt.Sprintf("%s%s", os.Getenv("BASE_URL"), os.Getenv("ERROR_PAGE"))
 	successPage := fmt.Sprintf("%s%s", os.Getenv("BASE_URL"), os.Getenv("SUCCESS_PAGE"))
 	confirmSubscribe := fmt.Sprintf("%s%s", os.Getenv("BASE_URL"), os.Getenv("CONFIRM_SUBSCRIBE_PAGE"))
@@ -276,7 +291,7 @@ func lambdaHandler(ctx context.Context, event events.APIGatewayV2HTTPRequest) (e
 		// Add requested email, new id, timestamp, and confirm == false to the table.
 		id := uuid.New().String()
 		timestamp := time.Now().Format("2006-01-02 15:04:05")
-		_, uerr := updateItemInDynamoDB(email.Address, id, timestamp, false)
+		_, uerr := updateItemInDynamoDB(clients.DynamoDB, email.Address, id, timestamp, false)
 		if uerr != nil {
 			log.Print("Could not update database: ", uerr)
 			resp.Headers["Location"] = errorPage
@@ -284,7 +299,7 @@ func lambdaHandler(ctx context.Context, event events.APIGatewayV2HTTPRequest) (e
 		}
 
 		// Send confirmation email.
-		_, serr := sendEmailWithSES(email.Address, id)
+		_, serr := sendEmailWithSES(clients.SES, email.Address, id)
 		if serr != nil {
 			log.Print("Could not send confirmation email: ", serr)
 			resp.Headers["Location"] = errorPage
@@ -310,21 +325,19 @@ func lambdaHandler(ctx context.Context, event events.APIGatewayV2HTTPRequest) (e
 		}
 
 		// Query for matching item. Both email and id must match.
-		match, err := emailExistsWithId(email, id)
+		match, err := emailExistsWithId(clients.DynamoDB, email, id)
 
 		if match == true {
 			// Set confirm == true and update timestamp for when they subscribed.
 			timestamp := time.Now().Format("2006-01-02 15:04:05")
-			success, uerr := updateItemInDynamoDB(email, id, timestamp, true)
-			if success != nil {
-				resp.Headers["Location"] = successPage
-				return resp, nil
-			}
+			_, uerr := updateItemInDynamoDB(clients.DynamoDB, email, id, timestamp, true)
 			if uerr != nil {
 				log.Printf("Could not update item in database: %s\n with query string: %s", uerr, event.RawQueryString)
 				resp.Headers["Location"] = errorPage
 				return resp, uerr
 			}
+			resp.Headers["Location"] = successPage
+			return resp, nil
 		}
 		// If details don't match, return error.
 		if err != nil {
@@ -345,10 +358,10 @@ func lambdaHandler(ctx context.Context, event events.APIGatewayV2HTTPRequest) (e
 			return resp, nil
 		}
 		// Try to find a match
-		match, err := emailExistsWithId(email, id)
+		match, err := emailExistsWithId(clients.DynamoDB, email, id)
 		if match == true {
 			// There's a matching item, so try to delete it
-			_, derr := deleteEmailFromDynamoDb(email, id)
+			_, derr := deleteEmailFromDynamoDb(clients.DynamoDB, email, id)
 			if derr == nil {
 				resp.Headers["Location"] = confirmUnsubscribe
 			} else {
@@ -372,5 +385,12 @@ func lambdaHandler(ctx context.Context, event events.APIGatewayV2HTTPRequest) (e
 }
 
 func main() {
-	lambda.Start(lambdaHandler)
+	sess := session.New()
+	clients := &ServiceClients{
+		DynamoDB: dynamodb.New(sess),
+		SES:      ses.New(sess),
+	}
+	lambda.Start(func(ctx context.Context, event events.APIGatewayV2HTTPRequest) (events.APIGatewayV2HTTPResponse, error) {
+		return lambdaHandler(ctx, clients, event)
+	})
 }
