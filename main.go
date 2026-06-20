@@ -12,24 +12,25 @@ import (
 
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/awserr"
-	"github.com/aws/aws-sdk-go/aws/request"
-	"github.com/aws/aws-sdk-go/aws/session"
-	"github.com/aws/aws-sdk-go/service/dynamodb"
-	"github.com/aws/aws-sdk-go/service/ses"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
+	dynamodbtypes "github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
+	"github.com/aws/aws-sdk-go-v2/service/ses"
+	sestypes "github.com/aws/aws-sdk-go-v2/service/ses/types"
 	"github.com/google/uuid"
 )
 
-// Define interfaces for AWS service clients to enable mocking
+// Define interfaces for AWS service clients to enable mocking.
+// The concrete v2 clients (*dynamodb.Client, *ses.Client) satisfy these.
 type DynamoDBAPI interface {
-	GetItemWithContext(aws.Context, *dynamodb.GetItemInput, ...request.Option) (*dynamodb.GetItemOutput, error)
-	UpdateItemWithContext(aws.Context, *dynamodb.UpdateItemInput, ...request.Option) (*dynamodb.UpdateItemOutput, error)
-	DeleteItemWithContext(aws.Context, *dynamodb.DeleteItemInput, ...request.Option) (*dynamodb.DeleteItemOutput, error)
+	GetItem(ctx context.Context, params *dynamodb.GetItemInput, optFns ...func(*dynamodb.Options)) (*dynamodb.GetItemOutput, error)
+	UpdateItem(ctx context.Context, params *dynamodb.UpdateItemInput, optFns ...func(*dynamodb.Options)) (*dynamodb.UpdateItemOutput, error)
+	DeleteItem(ctx context.Context, params *dynamodb.DeleteItemInput, optFns ...func(*dynamodb.Options)) (*dynamodb.DeleteItemOutput, error)
 }
 
 type SESAPI interface {
-	SendEmailWithContext(aws.Context, *ses.SendEmailInput, ...request.Option) (*ses.SendEmailOutput, error)
+	SendEmail(ctx context.Context, params *ses.SendEmailInput, optFns ...func(*ses.Options)) (*ses.SendEmailOutput, error)
 }
 
 // ServiceClients holds the AWS service clients
@@ -43,44 +44,28 @@ func emailExistsWithId(svc DynamoDBAPI, email string, id string) (bool, error) {
 	table := os.Getenv("DB_TABLE_NAME")
 	input := &dynamodb.GetItemInput{
 		// Get an item that matches email
-		Key: map[string]*dynamodb.AttributeValue{
-			"email": {
-				S: aws.String(email),
-			},
+		Key: map[string]dynamodbtypes.AttributeValue{
+			"email": &dynamodbtypes.AttributeValueMemberS{Value: email},
 		},
 		TableName: aws.String(table),
 	}
 
-	result, err := svc.GetItemWithContext(context.Background(), input)
+	result, err := svc.GetItem(context.Background(), input)
 	if err != nil {
-		if aerr, ok := err.(awserr.Error); ok {
-			switch aerr.Code() {
-			case dynamodb.ErrCodeProvisionedThroughputExceededException:
-				log.Print(dynamodb.ErrCodeProvisionedThroughputExceededException, aerr.Error())
-			case dynamodb.ErrCodeResourceNotFoundException:
-				log.Print(dynamodb.ErrCodeResourceNotFoundException, aerr.Error())
-			case dynamodb.ErrCodeRequestLimitExceeded:
-				log.Print(dynamodb.ErrCodeRequestLimitExceeded, aerr.Error())
-			case dynamodb.ErrCodeInternalServerError:
-				log.Print(dynamodb.ErrCodeInternalServerError, aerr.Error())
-			default:
-				log.Print(aerr.Error())
-			}
-		} else {
-			// Print the error, cast err to awserr.Error to get the Code and
-			// Message from an error.
-			log.Print(err.Error())
-		}
-	}
-	if result.Item == nil {
+		log.Print(err.Error())
 		return false, err
 	}
+	if result.Item == nil {
+		return false, nil
+	}
 	// Double check that the resulting email and id matches the input, return emailExistsWithId == true
-	if (*result.Item["email"].S == email) && (*result.Item["id"].S == id) {
+	emailAttr, emailOk := result.Item["email"].(*dynamodbtypes.AttributeValueMemberS)
+	idAttr, idOk := result.Item["id"].(*dynamodbtypes.AttributeValueMemberS)
+	if emailOk && idOk && emailAttr.Value == email && idAttr.Value == id {
 		return true, nil
 	}
 	log.Printf("No match for email: %s with id: %s", email, id)
-	return false, err
+	return false, nil
 }
 
 // Edits an existing email's attributes. No authorization is performed here, so ensure you check that values of email and id match before calling this function.
@@ -90,61 +75,29 @@ func updateItemInDynamoDB(svc DynamoDBAPI, email string, id string, timestamp st
 	input := &dynamodb.UpdateItemInput{
 		// Provide the key to use for finding the right item.
 		// Only matching on email means that a duplicate subscription request will override the first id.
-		Key: map[string]*dynamodb.AttributeValue{
-			"email": {
-				S: aws.String(email),
-			},
+		Key: map[string]dynamodbtypes.AttributeValue{
+			"email": &dynamodbtypes.AttributeValueMemberS{Value: email},
 		},
 		// Give the keys to be updated a shorthand to reference
-		ExpressionAttributeNames: map[string]*string{
-			"#ID": aws.String("id"),
-			"#T":  aws.String("timestamp"),
-			"#C":  aws.String("confirm"),
+		ExpressionAttributeNames: map[string]string{
+			"#ID": "id",
+			"#T":  "timestamp",
+			"#C":  "confirm",
 		},
 		// Give the incoming values a shorthand to reference
-		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
-			":idval": {
-				S: aws.String(id),
-			},
-			":timeval": {
-				S: aws.String(timestamp),
-			},
-			// Always override existing bool
-			":confirmval": {
-				BOOL: aws.Bool(confirm),
-			},
+		ExpressionAttributeValues: map[string]dynamodbtypes.AttributeValue{
+			":idval":      &dynamodbtypes.AttributeValueMemberS{Value: id},
+			":timeval":    &dynamodbtypes.AttributeValueMemberS{Value: timestamp},
+			":confirmval": &dynamodbtypes.AttributeValueMemberBOOL{Value: confirm},
 		},
 		// Use the shorthand references to update these keys
 		UpdateExpression: aws.String("SET #C = :confirmval, #T = :timeval, #ID = :idval"),
 		TableName:        aws.String(table),
 	}
 
-	result, err := svc.UpdateItemWithContext(context.Background(), input)
+	result, err := svc.UpdateItem(context.Background(), input)
 	if err != nil {
-		if aerr, ok := err.(awserr.Error); ok {
-			switch aerr.Code() {
-			case dynamodb.ErrCodeConditionalCheckFailedException:
-				log.Print(dynamodb.ErrCodeConditionalCheckFailedException, aerr.Error())
-			case dynamodb.ErrCodeProvisionedThroughputExceededException:
-				log.Print(dynamodb.ErrCodeProvisionedThroughputExceededException, aerr.Error())
-			case dynamodb.ErrCodeResourceNotFoundException:
-				log.Print(dynamodb.ErrCodeResourceNotFoundException, aerr.Error())
-			case dynamodb.ErrCodeItemCollectionSizeLimitExceededException:
-				log.Print(dynamodb.ErrCodeItemCollectionSizeLimitExceededException, aerr.Error())
-			case dynamodb.ErrCodeTransactionConflictException:
-				log.Print(dynamodb.ErrCodeTransactionConflictException, aerr.Error())
-			case dynamodb.ErrCodeRequestLimitExceeded:
-				log.Print(dynamodb.ErrCodeRequestLimitExceeded, aerr.Error())
-			case dynamodb.ErrCodeInternalServerError:
-				log.Print(dynamodb.ErrCodeInternalServerError, aerr.Error())
-			default:
-				log.Print(aerr.Error())
-			}
-		} else {
-			// Print the error, cast err to awserr.Error to get the Code and
-			// Message from an error.
-			log.Print(err.Error())
-		}
+		log.Print(err.Error())
 	}
 	return result, err
 }
@@ -153,50 +106,21 @@ func updateItemInDynamoDB(svc DynamoDBAPI, email string, id string, timestamp st
 func deleteEmailFromDynamoDb(svc DynamoDBAPI, email string, id string) (*dynamodb.DeleteItemOutput, error) {
 	table := os.Getenv("DB_TABLE_NAME")
 	input := &dynamodb.DeleteItemInput{
-		Key: map[string]*dynamodb.AttributeValue{
-			"email": {
-				S: aws.String(email),
-			},
+		Key: map[string]dynamodbtypes.AttributeValue{
+			"email": &dynamodbtypes.AttributeValueMemberS{Value: email},
 		},
-		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
-			":emailval": {
-				S: aws.String(email),
-			},
-			":idval": {
-				S: aws.String(id),
-			},
+		ExpressionAttributeValues: map[string]dynamodbtypes.AttributeValue{
+			":emailval": &dynamodbtypes.AttributeValueMemberS{Value: email},
+			":idval":    &dynamodbtypes.AttributeValueMemberS{Value: id},
 		},
 		// Find an item that matches both email and id
 		ConditionExpression: aws.String("email = :emailval AND id = :idval"),
 		TableName:           aws.String(table),
 	}
 
-	result, err := svc.DeleteItemWithContext(context.Background(), input)
+	result, err := svc.DeleteItem(context.Background(), input)
 	if err != nil {
-		if aerr, ok := err.(awserr.Error); ok {
-			switch aerr.Code() {
-			case dynamodb.ErrCodeConditionalCheckFailedException:
-				log.Println(dynamodb.ErrCodeConditionalCheckFailedException, aerr.Error())
-			case dynamodb.ErrCodeProvisionedThroughputExceededException:
-				log.Println(dynamodb.ErrCodeProvisionedThroughputExceededException, aerr.Error())
-			case dynamodb.ErrCodeResourceNotFoundException:
-				log.Println(dynamodb.ErrCodeResourceNotFoundException, aerr.Error())
-			case dynamodb.ErrCodeItemCollectionSizeLimitExceededException:
-				log.Println(dynamodb.ErrCodeItemCollectionSizeLimitExceededException, aerr.Error())
-			case dynamodb.ErrCodeTransactionConflictException:
-				log.Println(dynamodb.ErrCodeTransactionConflictException, aerr.Error())
-			case dynamodb.ErrCodeRequestLimitExceeded:
-				log.Println(dynamodb.ErrCodeRequestLimitExceeded, aerr.Error())
-			case dynamodb.ErrCodeInternalServerError:
-				log.Println(dynamodb.ErrCodeInternalServerError, aerr.Error())
-			default:
-				log.Println(aerr.Error())
-			}
-		} else {
-			// Print the error, cast err to awserr.Error to get the Code and
-			// Message from an error.
-			log.Print(err.Error())
-		}
+		log.Println(err.Error())
 	}
 	return result, err
 }
@@ -215,23 +139,21 @@ func sendEmailWithSES(sesSvc SESAPI, email string, id string) (*ses.SendEmailOut
 	source := fmt.Sprintf("\"%s\" <%s>", os.Getenv("SENDER_NAME"), os.Getenv("SENDER_EMAIL"))
 
 	input := &ses.SendEmailInput{
-		Destination: &ses.Destination{
-			ToAddresses: []*string{
-				aws.String(email),
-			},
+		Destination: &sestypes.Destination{
+			ToAddresses: []string{email},
 		},
-		Message: &ses.Message{
-			Body: &ses.Body{
-				Html: &ses.Content{
+		Message: &sestypes.Message{
+			Body: &sestypes.Body{
+				Html: &sestypes.Content{
 					Charset: aws.String("UTF-8"),
 					Data:    aws.String(msg),
 				},
-				Text: &ses.Content{
+				Text: &sestypes.Content{
 					Charset: aws.String("UTF-8"),
 					Data:    aws.String(txt),
 				},
 			},
-			Subject: &ses.Content{
+			Subject: &sestypes.Content{
 				Charset: aws.String("UTF-8"),
 				Data:    aws.String("Confirm your subscription"),
 			},
@@ -240,28 +162,9 @@ func sendEmailWithSES(sesSvc SESAPI, email string, id string) (*ses.SendEmailOut
 		Source:     aws.String(source),
 	}
 
-	result, err := sesSvc.SendEmailWithContext(context.Background(), input)
+	result, err := sesSvc.SendEmail(context.Background(), input)
 	if err != nil {
-		if aerr, ok := err.(awserr.Error); ok {
-			switch aerr.Code() {
-			case ses.ErrCodeMessageRejected:
-				log.Print(ses.ErrCodeMessageRejected, aerr.Error())
-			case ses.ErrCodeMailFromDomainNotVerifiedException:
-				log.Print(ses.ErrCodeMailFromDomainNotVerifiedException, aerr.Error())
-			case ses.ErrCodeConfigurationSetDoesNotExistException:
-				log.Print(ses.ErrCodeConfigurationSetDoesNotExistException, aerr.Error())
-			case ses.ErrCodeConfigurationSetSendingPausedException:
-				log.Print(ses.ErrCodeConfigurationSetSendingPausedException, aerr.Error())
-			case ses.ErrCodeAccountSendingPausedException:
-				log.Print(ses.ErrCodeAccountSendingPausedException, aerr.Error())
-			default:
-				log.Print(aerr.Error())
-			}
-		} else {
-			// Print the error, cast err to awserr.Error to get the Code and
-			// Message from an error.
-			log.Print(err.Error())
-		}
+		log.Print(err.Error())
 		return result, err
 	}
 	log.Print(result)
@@ -385,10 +288,13 @@ func lambdaHandler(ctx context.Context, clients *ServiceClients, event events.AP
 }
 
 func main() {
-	sess := session.New()
+	cfg, err := config.LoadDefaultConfig(context.TODO())
+	if err != nil {
+		log.Fatalf("unable to load AWS SDK config: %s", err)
+	}
 	clients := &ServiceClients{
-		DynamoDB: dynamodb.New(sess),
-		SES:      ses.New(sess),
+		DynamoDB: dynamodb.NewFromConfig(cfg),
+		SES:      ses.NewFromConfig(cfg),
 	}
 	lambda.Start(func(ctx context.Context, event events.APIGatewayV2HTTPRequest) (events.APIGatewayV2HTTPResponse, error) {
 		return lambdaHandler(ctx, clients, event)
