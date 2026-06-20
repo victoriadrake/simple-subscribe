@@ -8,44 +8,39 @@ import (
 	"testing"
 
 	"github.com/aws/aws-lambda-go/events"
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/request"
-	"github.com/aws/aws-sdk-go/service/dynamodb"
-	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbiface"
-	"github.com/aws/aws-sdk-go/service/ses"
-	"github.com/aws/aws-sdk-go/service/ses/sesiface"
+	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
+	dynamodbtypes "github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
+	"github.com/aws/aws-sdk-go-v2/service/ses"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
 
-// MockDynamoDBClient is a mock implementation of dynamodbiface.DynamoDBAPI
+// MockDynamoDBClient is a mock implementation of DynamoDBAPI
 type MockDynamoDBClient struct {
-	dynamodbiface.DynamoDBAPI
 	mock.Mock
 }
 
-func (m *MockDynamoDBClient) GetItemWithContext(ctx aws.Context, input *dynamodb.GetItemInput, opts ...request.Option) (*dynamodb.GetItemOutput, error) {
+func (m *MockDynamoDBClient) GetItem(ctx context.Context, input *dynamodb.GetItemInput, optFns ...func(*dynamodb.Options)) (*dynamodb.GetItemOutput, error) {
 	args := m.Called(ctx, input)
 	return args.Get(0).(*dynamodb.GetItemOutput), args.Error(1)
 }
 
-func (m *MockDynamoDBClient) UpdateItemWithContext(ctx aws.Context, input *dynamodb.UpdateItemInput, opts ...request.Option) (*dynamodb.UpdateItemOutput, error) {
+func (m *MockDynamoDBClient) UpdateItem(ctx context.Context, input *dynamodb.UpdateItemInput, optFns ...func(*dynamodb.Options)) (*dynamodb.UpdateItemOutput, error) {
 	args := m.Called(ctx, input)
 	return args.Get(0).(*dynamodb.UpdateItemOutput), args.Error(1)
 }
 
-func (m *MockDynamoDBClient) DeleteItemWithContext(ctx aws.Context, input *dynamodb.DeleteItemInput, opts ...request.Option) (*dynamodb.DeleteItemOutput, error) {
+func (m *MockDynamoDBClient) DeleteItem(ctx context.Context, input *dynamodb.DeleteItemInput, optFns ...func(*dynamodb.Options)) (*dynamodb.DeleteItemOutput, error) {
 	args := m.Called(ctx, input)
 	return args.Get(0).(*dynamodb.DeleteItemOutput), args.Error(1)
 }
 
-// MockSESClient is a mock implementation of sesiface.SESAPI
+// MockSESClient is a mock implementation of SESAPI
 type MockSESClient struct {
-	sesiface.SESAPI
 	mock.Mock
 }
 
-func (m *MockSESClient) SendEmailWithContext(ctx aws.Context, input *ses.SendEmailInput, opts ...request.Option) (*ses.SendEmailOutput, error) {
+func (m *MockSESClient) SendEmail(ctx context.Context, input *ses.SendEmailInput, optFns ...func(*ses.Options)) (*ses.SendEmailOutput, error) {
 	args := m.Called(ctx, input)
 	return args.Get(0).(*ses.SendEmailOutput), args.Error(1)
 }
@@ -54,22 +49,22 @@ func TestEmailExistsWithId(t *testing.T) {
 	os.Setenv("DB_TABLE_NAME", "TestTable")
 
 	tests := []struct {
-		name          string
-		email         string
-		id            string
-		mockGetItem   *dynamodb.GetItemOutput
+		name           string
+		email          string
+		id             string
+		mockGetItem    *dynamodb.GetItemOutput
 		mockGetItemErr error
-		expectedExist bool
-		expectedErr   error
+		expectedExist  bool
+		expectedErr    error
 	}{
 		{
 			name:  "Email and ID match",
 			email: "test@example.com",
 			id:    "123",
 			mockGetItem: &dynamodb.GetItemOutput{
-				Item: map[string]*dynamodb.AttributeValue{
-					"email": {S: aws.String("test@example.com")},
-					"id":    {S: aws.String("123")},
+				Item: map[string]dynamodbtypes.AttributeValue{
+					"email": &dynamodbtypes.AttributeValueMemberS{Value: "test@example.com"},
+					"id":    &dynamodbtypes.AttributeValueMemberS{Value: "123"},
 				},
 			},
 			mockGetItemErr: nil,
@@ -81,9 +76,9 @@ func TestEmailExistsWithId(t *testing.T) {
 			email: "test@example.com",
 			id:    "456",
 			mockGetItem: &dynamodb.GetItemOutput{
-				Item: map[string]*dynamodb.AttributeValue{
-					"email": {S: aws.String("test@example.com")},
-					"id":    {S: aws.String("123")},
+				Item: map[string]dynamodbtypes.AttributeValue{
+					"email": &dynamodbtypes.AttributeValueMemberS{Value: "test@example.com"},
+					"id":    &dynamodbtypes.AttributeValueMemberS{Value: "123"},
 				},
 			},
 			mockGetItemErr: nil,
@@ -113,7 +108,7 @@ func TestEmailExistsWithId(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			mockSvc := new(MockDynamoDBClient)
-			mockSvc.On("GetItemWithContext", mock.Anything, mock.AnythingOfType("*dynamodb.GetItemInput")).Return(tt.mockGetItem, tt.mockGetItemErr)
+			mockSvc.On("GetItem", mock.Anything, mock.AnythingOfType("*dynamodb.GetItemInput")).Return(tt.mockGetItem, tt.mockGetItemErr)
 
 			exists, err := emailExistsWithId(mockSvc, tt.email, tt.id)
 
@@ -133,41 +128,41 @@ func TestUpdateItemInDynamoDB(t *testing.T) {
 	os.Setenv("DB_TABLE_NAME", "TestTable")
 
 	tests := []struct {
-		name            string
-		email           string
-		id              string
-		timestamp       string
-		confirm         bool
-		mockUpdateItem  *dynamodb.UpdateItemOutput
+		name              string
+		email             string
+		id                string
+		timestamp         string
+		confirm           bool
+		mockUpdateItem    *dynamodb.UpdateItemOutput
 		mockUpdateItemErr error
-		expectedErr     error
+		expectedErr       error
 	}{
 		{
-			name:            "Successful update",
-			email:           "test@example.com",
-			id:              "123",
-			timestamp:       "2023-01-01 12:00:00",
-			confirm:         true,
-			mockUpdateItem:  &dynamodb.UpdateItemOutput{},
+			name:              "Successful update",
+			email:             "test@example.com",
+			id:                "123",
+			timestamp:         "2023-01-01 12:00:00",
+			confirm:           true,
+			mockUpdateItem:    &dynamodb.UpdateItemOutput{},
 			mockUpdateItemErr: nil,
-			expectedErr:     nil,
+			expectedErr:       nil,
 		},
 		{
-			name:            "DynamoDB error during update",
-			email:           "error@example.com",
-			id:              "456",
-			timestamp:       "2023-01-01 12:00:00",
-			confirm:         false,
-			mockUpdateItem:  &dynamodb.UpdateItemOutput{},
+			name:              "DynamoDB error during update",
+			email:             "error@example.com",
+			id:                "456",
+			timestamp:         "2023-01-01 12:00:00",
+			confirm:           false,
+			mockUpdateItem:    &dynamodb.UpdateItemOutput{},
 			mockUpdateItemErr: errors.New("DynamoDB update error"),
-			expectedErr:     errors.New("DynamoDB update error"),
+			expectedErr:       errors.New("DynamoDB update error"),
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			mockSvc := new(MockDynamoDBClient)
-			mockSvc.On("UpdateItemWithContext", mock.Anything, mock.AnythingOfType("*dynamodb.UpdateItemInput")).Return(tt.mockUpdateItem, tt.mockUpdateItemErr)
+			mockSvc.On("UpdateItem", mock.Anything, mock.AnythingOfType("*dynamodb.UpdateItemInput")).Return(tt.mockUpdateItem, tt.mockUpdateItemErr)
 
 			_, err := updateItemInDynamoDB(mockSvc, tt.email, tt.id, tt.timestamp, tt.confirm)
 
@@ -186,43 +181,43 @@ func TestDeleteEmailFromDynamoDb(t *testing.T) {
 	os.Setenv("DB_TABLE_NAME", "TestTable")
 
 	tests := []struct {
-		name            string
-		email           string
-		id              string
-		mockDeleteItem  *dynamodb.DeleteItemOutput
+		name              string
+		email             string
+		id                string
+		mockDeleteItem    *dynamodb.DeleteItemOutput
 		mockDeleteItemErr error
-		expectedErr     error
+		expectedErr       error
 	}{
 		{
-			name:            "Successful deletion",
-			email:           "test@example.com",
-			id:              "123",
-			mockDeleteItem:  &dynamodb.DeleteItemOutput{},
+			name:              "Successful deletion",
+			email:             "test@example.com",
+			id:                "123",
+			mockDeleteItem:    &dynamodb.DeleteItemOutput{},
 			mockDeleteItemErr: nil,
-			expectedErr:     nil,
+			expectedErr:       nil,
 		},
 		{
-			name:            "ConditionalCheckFailedException (ID mismatch)",
-			email:           "test@example.com",
-			id:              "456",
-			mockDeleteItem:  &dynamodb.DeleteItemOutput{},
+			name:              "ConditionalCheckFailedException (ID mismatch)",
+			email:             "test@example.com",
+			id:                "456",
+			mockDeleteItem:    &dynamodb.DeleteItemOutput{},
 			mockDeleteItemErr: errors.New("ConditionalCheckFailedException"),
-			expectedErr:     errors.New("ConditionalCheckFailedException"),
+			expectedErr:       errors.New("ConditionalCheckFailedException"),
 		},
 		{
-			name:            "DynamoDB error during deletion",
-			email:           "error@example.com",
-			id:              "789",
-			mockDeleteItem:  &dynamodb.DeleteItemOutput{},
+			name:              "DynamoDB error during deletion",
+			email:             "error@example.com",
+			id:                "789",
+			mockDeleteItem:    &dynamodb.DeleteItemOutput{},
 			mockDeleteItemErr: errors.New("DynamoDB delete error"),
-			expectedErr:     errors.New("DynamoDB delete error"),
+			expectedErr:       errors.New("DynamoDB delete error"),
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			mockSvc := new(MockDynamoDBClient)
-			mockSvc.On("DeleteItemWithContext", mock.Anything, mock.AnythingOfType("*dynamodb.DeleteItemInput")).Return(tt.mockDeleteItem, tt.mockDeleteItemErr)
+			mockSvc.On("DeleteItem", mock.Anything, mock.AnythingOfType("*dynamodb.DeleteItemInput")).Return(tt.mockDeleteItem, tt.mockDeleteItemErr)
 
 			_, err := deleteEmailFromDynamoDb(mockSvc, tt.email, tt.id)
 
@@ -244,35 +239,35 @@ func TestSendEmailWithSES(t *testing.T) {
 	os.Setenv("VERIFY_PATH", "/verify")
 
 	tests := []struct {
-		name          string
-		email         string
-		id            string
-		mockSendEmail *ses.SendEmailOutput
+		name             string
+		email            string
+		id               string
+		mockSendEmail    *ses.SendEmailOutput
 		mockSendEmailErr error
-		expectedErr   error
+		expectedErr      error
 	}{
 		{
-			name:          "Successful email send",
-			email:         "recipient@example.com",
-			id:            "123",
-			mockSendEmail: &ses.SendEmailOutput{},
+			name:             "Successful email send",
+			email:            "recipient@example.com",
+			id:               "123",
+			mockSendEmail:    &ses.SendEmailOutput{},
 			mockSendEmailErr: nil,
-			expectedErr:   nil,
+			expectedErr:      nil,
 		},
 		{
-			name:          "SES error during send",
-			email:         "error@example.com",
-			id:            "456",
-			mockSendEmail: &ses.SendEmailOutput{},
+			name:             "SES error during send",
+			email:            "error@example.com",
+			id:               "456",
+			mockSendEmail:    &ses.SendEmailOutput{},
 			mockSendEmailErr: errors.New("SES send error"),
-			expectedErr:   errors.New("SES send error"),
+			expectedErr:      errors.New("SES send error"),
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			mockSvc := new(MockSESClient)
-			mockSvc.On("SendEmailWithContext", mock.Anything, mock.AnythingOfType("*ses.SendEmailInput")).Return(tt.mockSendEmail, tt.mockSendEmailErr)
+			mockSvc.On("SendEmail", mock.Anything, mock.AnythingOfType("*ses.SendEmailInput")).Return(tt.mockSendEmail, tt.mockSendEmailErr)
 
 			_, err := sendEmailWithSES(mockSvc, tt.email, tt.id)
 
@@ -311,12 +306,12 @@ func TestLambdaHandler(t *testing.T) {
 	}
 
 	tests := []struct {
-		name           string
-		event          events.APIGatewayV2HTTPRequest
-		setupMocks     func()
-		expectedStatus int
+		name             string
+		event            events.APIGatewayV2HTTPRequest
+		setupMocks       func()
+		expectedStatus   int
 		expectedLocation string
-		expectedErr      error // Added this field
+		expectedErr      error
 	}{
 		{
 			name: "Subscribe - Success",
@@ -327,12 +322,12 @@ func TestLambdaHandler(t *testing.T) {
 				},
 			},
 			setupMocks: func() {
-				mockDynamoDB.On("UpdateItemWithContext", mock.Anything, mock.AnythingOfType("*dynamodb.UpdateItemInput")).Return(&dynamodb.UpdateItemOutput{}, nil).Once()
-				mockSES.On("SendEmailWithContext", mock.Anything, mock.AnythingOfType("*ses.SendEmailInput")).Return(&ses.SendEmailOutput{}, nil).Once()
+				mockDynamoDB.On("UpdateItem", mock.Anything, mock.AnythingOfType("*dynamodb.UpdateItemInput")).Return(&dynamodb.UpdateItemOutput{}, nil).Once()
+				mockSES.On("SendEmail", mock.Anything, mock.AnythingOfType("*ses.SendEmailInput")).Return(&ses.SendEmailOutput{}, nil).Once()
 			},
-			expectedStatus: http.StatusSeeOther,
+			expectedStatus:   http.StatusSeeOther,
 			expectedLocation: "https://example.com/confirm-subscribe",
-			expectedErr:    nil,
+			expectedErr:      nil,
 		},
 		{
 			name: "Subscribe - Invalid Email",
@@ -342,12 +337,10 @@ func TestLambdaHandler(t *testing.T) {
 					"email": "invalid-email",
 				},
 			},
-			setupMocks: func() {
-				// No DynamoDB or SES calls expected
-			},
-			expectedStatus: http.StatusSeeOther,
+			setupMocks:       func() {},
+			expectedStatus:   http.StatusSeeOther,
 			expectedLocation: "https://example.com/error",
-			expectedErr:    errors.New("mail: missing '@' or angle-addr"),
+			expectedErr:      errors.New("mail: missing '@' or angle-addr"),
 		},
 		{
 			name: "Subscribe - DynamoDB Update Error",
@@ -358,11 +351,11 @@ func TestLambdaHandler(t *testing.T) {
 				},
 			},
 			setupMocks: func() {
-				mockDynamoDB.On("UpdateItemWithContext", mock.Anything, mock.AnythingOfType("*dynamodb.UpdateItemInput")).Return(&dynamodb.UpdateItemOutput{}, errors.New("db error")).Once()
+				mockDynamoDB.On("UpdateItem", mock.Anything, mock.AnythingOfType("*dynamodb.UpdateItemInput")).Return(&dynamodb.UpdateItemOutput{}, errors.New("db error")).Once()
 			},
-			expectedStatus: http.StatusSeeOther,
+			expectedStatus:   http.StatusSeeOther,
 			expectedLocation: "https://example.com/error",
-			expectedErr:    errors.New("db error"),
+			expectedErr:      errors.New("db error"),
 		},
 		{
 			name: "Subscribe - SES Send Error",
@@ -373,12 +366,12 @@ func TestLambdaHandler(t *testing.T) {
 				},
 			},
 			setupMocks: func() {
-				mockDynamoDB.On("UpdateItemWithContext", mock.Anything, mock.AnythingOfType("*dynamodb.UpdateItemInput")).Return(&dynamodb.UpdateItemOutput{}, nil).Once()
-				mockSES.On("SendEmailWithContext", mock.Anything, mock.AnythingOfType("*ses.SendEmailInput")).Return(&ses.SendEmailOutput{}, errors.New("ses error")).Once()
+				mockDynamoDB.On("UpdateItem", mock.Anything, mock.AnythingOfType("*dynamodb.UpdateItemInput")).Return(&dynamodb.UpdateItemOutput{}, nil).Once()
+				mockSES.On("SendEmail", mock.Anything, mock.AnythingOfType("*ses.SendEmailInput")).Return(&ses.SendEmailOutput{}, errors.New("ses error")).Once()
 			},
-			expectedStatus: http.StatusSeeOther,
+			expectedStatus:   http.StatusSeeOther,
 			expectedLocation: "https://example.com/error",
-			expectedErr:    errors.New("ses error"),
+			expectedErr:      errors.New("ses error"),
 		},
 		{
 			name: "Verify - Success",
@@ -390,17 +383,17 @@ func TestLambdaHandler(t *testing.T) {
 				},
 			},
 			setupMocks: func() {
-				mockDynamoDB.On("GetItemWithContext", mock.Anything, mock.AnythingOfType("*dynamodb.GetItemInput")).Return(&dynamodb.GetItemOutput{
-					Item: map[string]*dynamodb.AttributeValue{
-						"email": {S: aws.String("existing@example.com")},
-						"id":    {S: aws.String("existing-id")},
+				mockDynamoDB.On("GetItem", mock.Anything, mock.AnythingOfType("*dynamodb.GetItemInput")).Return(&dynamodb.GetItemOutput{
+					Item: map[string]dynamodbtypes.AttributeValue{
+						"email": &dynamodbtypes.AttributeValueMemberS{Value: "existing@example.com"},
+						"id":    &dynamodbtypes.AttributeValueMemberS{Value: "existing-id"},
 					},
 				}, nil).Once()
-				mockDynamoDB.On("UpdateItemWithContext", mock.Anything, mock.AnythingOfType("*dynamodb.UpdateItemInput")).Return(&dynamodb.UpdateItemOutput{}, nil).Once()
+				mockDynamoDB.On("UpdateItem", mock.Anything, mock.AnythingOfType("*dynamodb.UpdateItemInput")).Return(&dynamodb.UpdateItemOutput{}, nil).Once()
 			},
-			expectedStatus: http.StatusSeeOther,
+			expectedStatus:   http.StatusSeeOther,
 			expectedLocation: "https://example.com/success",
-			expectedErr:    nil,
+			expectedErr:      nil,
 		},
 		{
 			name: "Verify - Missing Parameters",
@@ -410,12 +403,10 @@ func TestLambdaHandler(t *testing.T) {
 					"email": "missing@example.com",
 				},
 			},
-			setupMocks: func() {
-				// No DynamoDB calls expected
-			},
-			expectedStatus: http.StatusSeeOther,
+			setupMocks:       func() {},
+			expectedStatus:   http.StatusSeeOther,
 			expectedLocation: "https://example.com/error",
-			expectedErr:    nil, // lambdaHandler returns nil error for missing params in this case
+			expectedErr:      nil,
 		},
 		{
 			name: "Verify - ID Mismatch",
@@ -427,16 +418,16 @@ func TestLambdaHandler(t *testing.T) {
 				},
 			},
 			setupMocks: func() {
-				mockDynamoDB.On("GetItemWithContext", mock.Anything, mock.AnythingOfType("*dynamodb.GetItemInput")).Return(&dynamodb.GetItemOutput{
-					Item: map[string]*dynamodb.AttributeValue{
-						"email": {S: aws.String("mismatch@example.com")},
-						"id":    {S: aws.String("correct-id")},
+				mockDynamoDB.On("GetItem", mock.Anything, mock.AnythingOfType("*dynamodb.GetItemInput")).Return(&dynamodb.GetItemOutput{
+					Item: map[string]dynamodbtypes.AttributeValue{
+						"email": &dynamodbtypes.AttributeValueMemberS{Value: "mismatch@example.com"},
+						"id":    &dynamodbtypes.AttributeValueMemberS{Value: "correct-id"},
 					},
 				}, nil).Once()
 			},
-			expectedStatus: http.StatusSeeOther,
+			expectedStatus:   http.StatusSeeOther,
 			expectedLocation: "https://example.com/error",
-			expectedErr:    nil, // emailExistsWithId returns nil error if no match, lambdaHandler returns nil
+			expectedErr:      nil,
 		},
 		{
 			name: "Verify - DynamoDB Get Error",
@@ -448,11 +439,11 @@ func TestLambdaHandler(t *testing.T) {
 				},
 			},
 			setupMocks: func() {
-				mockDynamoDB.On("GetItemWithContext", mock.Anything, mock.AnythingOfType("*dynamodb.GetItemInput")).Return(&dynamodb.GetItemOutput{}, errors.New("get error")).Once()
+				mockDynamoDB.On("GetItem", mock.Anything, mock.AnythingOfType("*dynamodb.GetItemInput")).Return(&dynamodb.GetItemOutput{}, errors.New("get error")).Once()
 			},
-			expectedStatus: http.StatusSeeOther,
+			expectedStatus:   http.StatusSeeOther,
 			expectedLocation: "https://example.com/error",
-			expectedErr:    errors.New("get error"),
+			expectedErr:      errors.New("get error"),
 		},
 		{
 			name: "Verify - DynamoDB Update Error",
@@ -464,17 +455,17 @@ func TestLambdaHandler(t *testing.T) {
 				},
 			},
 			setupMocks: func() {
-				mockDynamoDB.On("GetItemWithContext", mock.Anything, mock.AnythingOfType("*dynamodb.GetItemInput")).Return(&dynamodb.GetItemOutput{
-					Item: map[string]*dynamodb.AttributeValue{
-						"email": {S: aws.String("update-error@example.com")},
-						"id":    {S: aws.String("some-id")},
+				mockDynamoDB.On("GetItem", mock.Anything, mock.AnythingOfType("*dynamodb.GetItemInput")).Return(&dynamodb.GetItemOutput{
+					Item: map[string]dynamodbtypes.AttributeValue{
+						"email": &dynamodbtypes.AttributeValueMemberS{Value: "update-error@example.com"},
+						"id":    &dynamodbtypes.AttributeValueMemberS{Value: "some-id"},
 					},
 				}, nil).Once()
-				mockDynamoDB.On("UpdateItemWithContext", mock.Anything, mock.AnythingOfType("*dynamodb.UpdateItemInput")).Return(&dynamodb.UpdateItemOutput{}, errors.New("update error")).Once()
+				mockDynamoDB.On("UpdateItem", mock.Anything, mock.AnythingOfType("*dynamodb.UpdateItemInput")).Return(&dynamodb.UpdateItemOutput{}, errors.New("update error")).Once()
 			},
-			expectedStatus: http.StatusSeeOther,
+			expectedStatus:   http.StatusSeeOther,
 			expectedLocation: "https://example.com/error",
-			expectedErr:    errors.New("update error"),
+			expectedErr:      errors.New("update error"),
 		},
 		{
 			name: "Unsubscribe - Success",
@@ -486,17 +477,17 @@ func TestLambdaHandler(t *testing.T) {
 				},
 			},
 			setupMocks: func() {
-				mockDynamoDB.On("GetItemWithContext", mock.Anything, mock.AnythingOfType("*dynamodb.GetItemInput")).Return(&dynamodb.GetItemOutput{
-					Item: map[string]*dynamodb.AttributeValue{
-						"email": {S: aws.String("unsub@example.com")},
-						"id":    {S: aws.String("unsub-id")},
+				mockDynamoDB.On("GetItem", mock.Anything, mock.AnythingOfType("*dynamodb.GetItemInput")).Return(&dynamodb.GetItemOutput{
+					Item: map[string]dynamodbtypes.AttributeValue{
+						"email": &dynamodbtypes.AttributeValueMemberS{Value: "unsub@example.com"},
+						"id":    &dynamodbtypes.AttributeValueMemberS{Value: "unsub-id"},
 					},
 				}, nil).Once()
-				mockDynamoDB.On("DeleteItemWithContext", mock.Anything, mock.AnythingOfType("*dynamodb.DeleteItemInput")).Return(&dynamodb.DeleteItemOutput{}, nil).Once()
+				mockDynamoDB.On("DeleteItem", mock.Anything, mock.AnythingOfType("*dynamodb.DeleteItemInput")).Return(&dynamodb.DeleteItemOutput{}, nil).Once()
 			},
-			expectedStatus: http.StatusSeeOther,
+			expectedStatus:   http.StatusSeeOther,
 			expectedLocation: "https://example.com/confirm-unsubscribe",
-			expectedErr:    nil,
+			expectedErr:      nil,
 		},
 		{
 			name: "Unsubscribe - Missing Parameters",
@@ -506,12 +497,10 @@ func TestLambdaHandler(t *testing.T) {
 					"email": "missing-unsub@example.com",
 				},
 			},
-			setupMocks: func() {
-				// No DynamoDB calls expected
-			},
-			expectedStatus: http.StatusSeeOther,
+			setupMocks:       func() {},
+			expectedStatus:   http.StatusSeeOther,
 			expectedLocation: "https://example.com/error",
-			expectedErr:    nil, // lambdaHandler returns nil error for missing params in this case
+			expectedErr:      nil,
 		},
 		{
 			name: "Unsubscribe - ID Mismatch (GetItem finds, DeleteItem fails)",
@@ -523,16 +512,16 @@ func TestLambdaHandler(t *testing.T) {
 				},
 			},
 			setupMocks: func() {
-				mockDynamoDB.On("GetItemWithContext", mock.Anything, mock.AnythingOfType("*dynamodb.GetItemInput")).Return(&dynamodb.GetItemOutput{
-					Item: map[string]*dynamodb.AttributeValue{
-						"email": {S: aws.String("unsub-mismatch@example.com")},
-						"id":    {S: aws.String("correct-id")},
+				mockDynamoDB.On("GetItem", mock.Anything, mock.AnythingOfType("*dynamodb.GetItemInput")).Return(&dynamodb.GetItemOutput{
+					Item: map[string]dynamodbtypes.AttributeValue{
+						"email": &dynamodbtypes.AttributeValueMemberS{Value: "unsub-mismatch@example.com"},
+						"id":    &dynamodbtypes.AttributeValueMemberS{Value: "correct-id"},
 					},
 				}, nil).Once()
 			},
-			expectedStatus: http.StatusSeeOther,
+			expectedStatus:   http.StatusSeeOther,
 			expectedLocation: "https://example.com/error",
-			expectedErr:    nil, // emailExistsWithId returns nil error if no match, lambdaHandler returns nil
+			expectedErr:      nil,
 		},
 		{
 			name: "Unsubscribe - DynamoDB Get Error",
@@ -544,11 +533,11 @@ func TestLambdaHandler(t *testing.T) {
 				},
 			},
 			setupMocks: func() {
-				mockDynamoDB.On("GetItemWithContext", mock.Anything, mock.AnythingOfType("*dynamodb.GetItemInput")).Return(&dynamodb.GetItemOutput{}, errors.New("get error")).Once()
+				mockDynamoDB.On("GetItem", mock.Anything, mock.AnythingOfType("*dynamodb.GetItemInput")).Return(&dynamodb.GetItemOutput{}, errors.New("get error")).Once()
 			},
-			expectedStatus: http.StatusSeeOther,
+			expectedStatus:   http.StatusSeeOther,
 			expectedLocation: "https://example.com/error",
-			expectedErr:    errors.New("get error"),
+			expectedErr:      errors.New("get error"),
 		},
 		{
 			name: "Unsubscribe - DynamoDB Delete Error",
@@ -560,29 +549,27 @@ func TestLambdaHandler(t *testing.T) {
 				},
 			},
 			setupMocks: func() {
-				mockDynamoDB.On("GetItemWithContext", mock.Anything, mock.AnythingOfType("*dynamodb.GetItemInput")).Return(&dynamodb.GetItemOutput{
-					Item: map[string]*dynamodb.AttributeValue{
-						"email": {S: aws.String("unsub-delete-error@example.com")},
-						"id":    {S: aws.String("some-id")},
+				mockDynamoDB.On("GetItem", mock.Anything, mock.AnythingOfType("*dynamodb.GetItemInput")).Return(&dynamodb.GetItemOutput{
+					Item: map[string]dynamodbtypes.AttributeValue{
+						"email": &dynamodbtypes.AttributeValueMemberS{Value: "unsub-delete-error@example.com"},
+						"id":    &dynamodbtypes.AttributeValueMemberS{Value: "some-id"},
 					},
 				}, nil).Once()
-				mockDynamoDB.On("DeleteItemWithContext", mock.Anything, mock.AnythingOfType("*dynamodb.DeleteItemInput")).Return(&dynamodb.DeleteItemOutput{}, errors.New("delete error")).Once()
+				mockDynamoDB.On("DeleteItem", mock.Anything, mock.AnythingOfType("*dynamodb.DeleteItemInput")).Return(&dynamodb.DeleteItemOutput{}, errors.New("delete error")).Once()
 			},
-			expectedStatus: http.StatusSeeOther,
+			expectedStatus:   http.StatusSeeOther,
 			expectedLocation: "https://example.com/error",
-			expectedErr:    errors.New("delete error"),
+			expectedErr:      errors.New("delete error"),
 		},
 		{
 			name: "Unknown Path",
 			event: events.APIGatewayV2HTTPRequest{
 				RawPath: "/unknown/",
 			},
-			setupMocks: func() {
-				// No DynamoDB or SES calls expected
-			},
-			expectedStatus: http.StatusSeeOther,
+			setupMocks:       func() {},
+			expectedStatus:   http.StatusSeeOther,
 			expectedLocation: "https://example.com/error",
-			expectedErr:    nil, // lambdaHandler returns nil error for unknown path in this case
+			expectedErr:      nil,
 		},
 	}
 
@@ -591,6 +578,8 @@ func TestLambdaHandler(t *testing.T) {
 			// Reset mocks before each test
 			mockDynamoDB.Calls = []mock.Call{}
 			mockSES.Calls = []mock.Call{}
+			mockDynamoDB.ExpectedCalls = nil
+			mockSES.ExpectedCalls = nil
 
 			tt.setupMocks()
 
